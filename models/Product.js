@@ -3,13 +3,13 @@ const mongoose = require('mongoose');
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   description: { type: String, default: '' },
-  price: { type: Number, required: true, min: 0 },
+  price: { type: Number, required: true, min: 1 },
   stock: { type: Number, required: true, min: 0, default: 0 },
   category: {
     type: String,
     required: true,
-    enum: ['Action Figures', 'Statues', 'Model Kits', 'Plushies', 'Trading Cards', 'Accessories', 'Other'],
-    default: 'Other'
+    enum: ['Figurines'],
+    default: 'Figurines'
   },
   image: { type: String, default: '' },
   platform: { type: String, enum: ['Own Website', 'Mobile App', 'Other'], default: 'Own Website' },

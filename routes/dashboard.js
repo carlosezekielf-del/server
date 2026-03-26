@@ -11,7 +11,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
       Product.countDocuments(),
       User.countDocuments({ role: 'customer' }),
       Order.countDocuments({ status: 'pending' }),
-      Product.countDocuments({ stock: { $lte: 5, $gt: 0 } }),
+      Product.countDocuments({ stock: { $lte: 10, $gt: 0 } }),
       Order.aggregate([{ $match: { status: { $ne: 'cancelled' } } }, { $group: { _id: null, total: { $sum: '$totalAmount' } } }]),
       Order.find().populate('customer', 'name').sort({ createdAt: -1 }).limit(5),
       Product.find().sort({ sales: -1 }).limit(5),

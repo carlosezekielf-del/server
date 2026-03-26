@@ -58,7 +58,8 @@ router.post('/register', async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone || '',
-        address: user.address || ''
+        address: user.address || '',
+        avatar: user.avatar || ''
       }
     });
   } catch (err) {
@@ -86,7 +87,8 @@ router.post('/google', async (req, res) => {
         name,
         email,
         password: `google_${Math.random().toString(36).slice(2)}${Date.now()}`,
-        role: 'customer'
+        role: 'customer',
+        avatar: payload?.picture || ''
       });
       sendWelcomeEmail(user.email, user.name).catch(() => {});
     }
@@ -100,7 +102,8 @@ router.post('/google', async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone || '',
-        address: user.address || ''
+        address: user.address || '',
+        avatar: user.avatar || ''
       }
     });
   } catch (err) {
@@ -128,7 +131,8 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone || '',
-        address: user.address || ''
+        address: user.address || '',
+        avatar: user.avatar || ''
       }
     });
   } catch (err) {
@@ -142,8 +146,10 @@ router.get('/me', protect, async (req, res) => {
 
 router.put('/profile', protect, async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
-    const user = await User.findByIdAndUpdate(req.user._id, { name, phone, address }, { new: true });
+    const { name, phone, address, avatar } = req.body;
+    const updates = { name, phone, address };
+    if (typeof avatar === 'string') updates.avatar = avatar;
+    const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true });
     res.json({
       success: true,
       user: {
@@ -152,7 +158,8 @@ router.put('/profile', protect, async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone || '',
-        address: user.address || ''
+        address: user.address || '',
+        avatar: user.avatar || ''
       }
     });
   } catch (err) {
