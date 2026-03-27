@@ -44,7 +44,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
   try {
     const { name, price, stock, category } = req.body;
     if (!name || name.length < 2) return res.status(400).json({ success: false, message: 'Name must be at least 2 characters' });
-    if (price == null || isNaN(price) || price <= 0) return res.status(400).json({ success: false, message: 'Price must be greater than 0' });
+    if (price == null || isNaN(price) || price < 0) return res.status(400).json({ success: false, message: 'Price must be greater than 0' });
     if (stock == null || isNaN(stock) || stock < 0) return res.status(400).json({ success: false, message: 'Valid stock required' });
     if (!category) return res.status(400).json({ success: false, message: 'Category required' });
     const product = await Product.create(req.body);
@@ -56,6 +56,9 @@ router.post('/', protect, adminOnly, async (req, res) => {
 
 router.put('/:id', protect, adminOnly, async (req, res) => {
   try {
+    if (req.body.price != null && (isNaN(req.body.price) || Number(req.body.price) <= 0)) {
+      return res.status(400).json({ success: false, message: 'Price must be greater than 0' });
+    }
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
     res.json({ success: true, data: product });
