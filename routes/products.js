@@ -27,11 +27,9 @@ router.get('/public', async (req, res) => {
 // ADMIN - get all products
 router.get('/', protect, adminOnly, async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, category, status } = req.query;
+    const { page = 1, limit = 10, search } = req.query;
     const query = {};
     if (search) query.name = { $regex: search, $options: 'i' };
-    if (category) query.category = category;
-    if (status) query.status = status;
     const total = await Product.countDocuments(query);
     const products = await Product.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit));
     res.json({ success: true, data: products, pagination: { total, page: Number(page), pages: Math.ceil(total / limit) } });
@@ -42,11 +40,10 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
 router.post('/', protect, adminOnly, async (req, res) => {
   try {
-    const { name, price, stock, category } = req.body;
+    const { name, price, stock } = req.body;
     if (!name || name.length < 2) return res.status(400).json({ success: false, message: 'Name must be at least 2 characters' });
     if (price == null || isNaN(price) || price < 0) return res.status(400).json({ success: false, message: 'Price must be greater than 0' });
     if (stock == null || isNaN(stock) || stock < 0) return res.status(400).json({ success: false, message: 'Valid stock required' });
-    if (!category) return res.status(400).json({ success: false, message: 'Category required' });
     const product = await Product.create(req.body);
     res.status(201).json({ success: true, data: product });
   } catch (err) {
