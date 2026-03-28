@@ -4,11 +4,10 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { protect, generateToken } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
-const { sendWelcomeEmail, sendPasswordResetCode } = require('../utils/mailer');
+const { sendWelcomeEmail, sendPasswordResetCode, isEmailReady } = require('../utils/mailer');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim());
-const isSmtpReady = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 const isRealGoogleClientId = (id) => {
   const v = String(id || '').trim();
   return Boolean(v) && !v.startsWith('your_google_client_id') && v.endsWith('.apps.googleusercontent.com');
@@ -169,8 +168,8 @@ router.put('/profile', protect, async (req, res) => {
 
 router.post('/password/send-code', protect, async (req, res) => {
   try {
-    if (!isSmtpReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SMTP env values first.' });
+    if (!isEmailReady()) {
+      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SENDGRID_API_KEY and SENDGRID_FROM first.' });
     }
     const user = await User.findById(req.user._id).select('+resetCodeHash +resetCodeExpiresAt');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -178,7 +177,7 @@ router.post('/password/send-code', protect, async (req, res) => {
     const code = await setResetCodeForUser(user);
     const sent = await sendPasswordResetCode(user.email, user.name, code);
     if (!sent) {
-      return res.status(503).json({ success: false, message: 'Failed to send reset code. Check SMTP configuration.' });
+      return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email API configuration.' });
     }
     res.json({ success: true, message: 'Reset code sent to your email' });
   } catch (err) {
@@ -188,8 +187,8 @@ router.post('/password/send-code', protect, async (req, res) => {
 
 router.post('/password/forgot/send-code', async (req, res) => {
   try {
-    if (!isSmtpReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SMTP env values first.' });
+    if (!isEmailReady()) {
+      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SENDGRID_API_KEY and SENDGRID_FROM first.' });
     }
     const { email } = req.body;
     const cleanEmail = String(email || '').toLowerCase().trim();
@@ -202,7 +201,7 @@ router.post('/password/forgot/send-code', async (req, res) => {
       const code = await setResetCodeForUser(user);
       const sent = await sendPasswordResetCode(user.email, user.name, code);
       if (!sent) {
-        return res.status(503).json({ success: false, message: 'Failed to send reset code. Check SMTP configuration.' });
+        return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email API configuration.' });
       }
     }
 
