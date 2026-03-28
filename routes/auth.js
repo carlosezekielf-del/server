@@ -6,11 +6,32 @@ const { protect, generateToken } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
 const { sendWelcomeEmail, sendPasswordResetCode, isEmailReady } = require('../utils/mailer');
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const googleClient = new OAuth2Client();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim());
 const isRealGoogleClientId = (id) => {
   const v = String(id || '').trim();
-  return Boolean(v) && !v.startsWith('your_google_client_id') && v.endsWith('.apps.googleusercontent.com');
+  if (!v) return false;
+  if (!v.endsWith('.apps.googleusercontent.com')) return false;
+  if (v.toLowerCase().startsWith('your_')) return false;
+  return true;
+};
+const getGoogleClientIds = () => ([
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_ANDROID_CLIENT_ID,
+  process.env.GOOGLE_IOS_CLIENT_ID,
+  process.env.GOOGLE_EXPO_CLIENT_ID
+].map((id) => String(id || '').trim()).filter(isRealGoogleClientId));
+const getGoogleClientIdResponse = () => {
+  const web = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const android = String(process.env.GOOGLE_ANDROID_CLIENT_ID || '').trim();
+  const ios = String(process.env.GOOGLE_IOS_CLIENT_ID || '').trim();
+  const expo = String(process.env.GOOGLE_EXPO_CLIENT_ID || '').trim();
+  return {
+    clientId: isRealGoogleClientId(web) ? web : '',
+    androidClientId: isRealGoogleClientId(android) ? android : '',
+    iosClientId: isRealGoogleClientId(ios) ? ios : '',
+    expoClientId: isRealGoogleClientId(expo) ? expo : ''
+  };
 };
 
 const setResetCodeForUser = async (user) => {
@@ -22,10 +43,9 @@ const setResetCodeForUser = async (user) => {
 };
 
 router.get('/google-client-id', (req, res) => {
-  const id = String(process.env.GOOGLE_CLIENT_ID || '').trim();
   res.json({
     success: true,
-    clientId: isRealGoogleClientId(id) ? id : ''
+    ...getGoogleClientIdResponse()
   });
 });
 
@@ -71,9 +91,14 @@ router.post('/google', async (req, res) => {
     const { credential } = req.body;
     if (!credential) return res.status(400).json({ success: false, message: 'Google credential required' });
 
+    const googleClientIds = getGoogleClientIds();
+    if (!googleClientIds.length) {
+      return res.status(503).json({ success: false, message: 'Google login is not configured.' });
+    }
+
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: googleClientIds
     });
     const payload = ticket.getPayload();
     const email = payload?.email;
@@ -169,7 +194,7 @@ router.put('/profile', protect, async (req, res) => {
 router.post('/password/send-code', protect, async (req, res) => {
   try {
     if (!isEmailReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SENDGRID_API_KEY and SENDGRID_FROM first.' });
+      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SendGrid or SMTP credentials first.' });
     }
     const user = await User.findById(req.user._id).select('+resetCodeHash +resetCodeExpiresAt');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -177,7 +202,7 @@ router.post('/password/send-code', protect, async (req, res) => {
     const code = await setResetCodeForUser(user);
     const sent = await sendPasswordResetCode(user.email, user.name, code);
     if (!sent) {
-      return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email API configuration.' });
+      return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email configuration.' });
     }
     res.json({ success: true, message: 'Reset code sent to your email' });
   } catch (err) {
@@ -188,7 +213,7 @@ router.post('/password/send-code', protect, async (req, res) => {
 router.post('/password/forgot/send-code', async (req, res) => {
   try {
     if (!isEmailReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SENDGRID_API_KEY and SENDGRID_FROM first.' });
+      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SendGrid or SMTP credentials first.' });
     }
     const { email } = req.body;
     const cleanEmail = String(email || '').toLowerCase().trim();
@@ -201,7 +226,7 @@ router.post('/password/forgot/send-code', async (req, res) => {
       const code = await setResetCodeForUser(user);
       const sent = await sendPasswordResetCode(user.email, user.name, code);
       if (!sent) {
-        return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email API configuration.' });
+        return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email configuration.' });
       }
     }
 

@@ -1,3 +1,4 @@
+const nodemailer = require('nodemailer');
 const https = require('https');
 
 const MAIL_TIMEOUT_MS = Number(process.env.EMAIL_TIMEOUT_MS || process.env.SMTP_TIMEOUT_MS || 10000);
@@ -7,16 +8,42 @@ const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME;
 const SENDGRID_API_HOST = process.env.SENDGRID_API_HOST || 'api.sendgrid.com';
 const SENDGRID_API_PATH = process.env.SENDGRID_API_PATH || '/v3/mail/send';
 
-const isEmailReady = () => Boolean(SENDGRID_API_KEY && SENDGRID_FROM);
+const hasSendgrid = Boolean(SENDGRID_API_KEY && SENDGRID_FROM);
+const hasSmtp = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+
+const withTimeout = (promise, ms, label) => {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+};
+
+const getSmtpTransport = () => {
+  if (!hasSmtp) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+    connectionTimeout: MAIL_TIMEOUT_MS,
+    greetingTimeout: MAIL_TIMEOUT_MS,
+    socketTimeout: MAIL_TIMEOUT_MS,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
+};
+
+const isEmailReady = () => hasSendgrid || hasSmtp;
 
 const buildFrom = () => {
   if (!SENDGRID_FROM_NAME) return { email: SENDGRID_FROM };
   return { email: SENDGRID_FROM, name: SENDGRID_FROM_NAME };
 };
 
-const sendEmail = async ({ to, subject, text, html }) => {
-  if (!isEmailReady()) return false;
-
+const sendViaSendgrid = async ({ to, subject, text, html }) => {
+  if (!hasSendgrid) return false;
   const payload = {
     personalizations: [{ to: [{ email: to }] }],
     from: buildFrom(),
@@ -60,6 +87,32 @@ const sendEmail = async ({ to, subject, text, html }) => {
     req.write(body);
     req.end();
   });
+};
+
+const sendViaSmtp = async ({ to, subject, text, html }) => {
+  const tx = getSmtpTransport();
+  if (!tx) return false;
+  try {
+    await withTimeout(tx.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to,
+      subject,
+      text,
+      html
+    }), MAIL_TIMEOUT_MS, 'SMTP send');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const sendEmail = async (payload) => {
+  if (hasSendgrid) {
+    const ok = await sendViaSendgrid(payload);
+    if (ok) return true;
+  }
+  if (hasSmtp) return sendViaSmtp(payload);
+  return false;
 };
 
 const sendWelcomeEmail = async (to, name) => {
