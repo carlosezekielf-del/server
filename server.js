@@ -43,7 +43,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/dashboard', require('./routes/dashboard'));
-app.get('/api/health', (_, res) => res.json({ status: 'OK', message: 'Namiskii is running' }));
+app.use('/api/health', require('./routes/health'));
 
 app.use((_, res) => res.status(404).json({ success: false, message: 'Route not found :(' }));
 app.use((err, req, res, next) => res.status(500).json({ success: false, message: err.message }));
