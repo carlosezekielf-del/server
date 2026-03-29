@@ -194,7 +194,7 @@ router.put('/profile', protect, async (req, res) => {
 router.post('/password/send-code', protect, async (req, res) => {
   try {
     if (!isEmailReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SendGrid or SMTP credentials first.' });
+      return res.status(503).json({ success: false, message: 'Email service is not configured. Set Resend credentials first.' });
     }
     const user = await User.findById(req.user._id).select('+resetCodeHash +resetCodeExpiresAt');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -213,7 +213,7 @@ router.post('/password/send-code', protect, async (req, res) => {
 router.post('/password/forgot/send-code', async (req, res) => {
   try {
     if (!isEmailReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set SendGrid or SMTP credentials first.' });
+      return res.status(503).json({ success: false, message: 'Email service is not configured. Set Resend credentials first.' });
     }
     const { email } = req.body;
     const cleanEmail = String(email || '').toLowerCase().trim();
