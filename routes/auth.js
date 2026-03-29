@@ -4,7 +4,12 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { protect, generateToken } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
-const { sendWelcomeEmail, sendPasswordResetCode, isEmailReady } = require('../utils/mailer');
+const {
+  sendWelcomeEmail,
+  sendPasswordResetCodeDetailed,
+  isEmailReady,
+  getEmailDiagnostics
+} = require('../utils/mailer');
 
 const googleClient = new OAuth2Client();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim());
@@ -40,6 +45,11 @@ const setResetCodeForUser = async (user) => {
   user.resetCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await user.save();
   return code;
+};
+
+const getEmailStatusMessage = () => {
+  const diagnostics = getEmailDiagnostics();
+  return diagnostics?.resend?.setupIssue || 'Email service is not configured. Set Resend credentials first.';
 };
 
 router.get('/google-client-id', (req, res) => {
@@ -194,15 +204,15 @@ router.put('/profile', protect, async (req, res) => {
 router.post('/password/send-code', protect, async (req, res) => {
   try {
     if (!isEmailReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set Resend credentials first.' });
+      return res.status(503).json({ success: false, message: getEmailStatusMessage() });
     }
     const user = await User.findById(req.user._id).select('+resetCodeHash +resetCodeExpiresAt');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     const code = await setResetCodeForUser(user);
-    const sent = await sendPasswordResetCode(user.email, user.name, code);
-    if (!sent) {
-      return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email configuration.' });
+    const sendResult = await sendPasswordResetCodeDetailed(user.email, user.name, code);
+    if (!sendResult.ok) {
+      return res.status(503).json({ success: false, message: sendResult.error || 'Failed to send reset code. Check email configuration.' });
     }
     res.json({ success: true, message: 'Reset code sent to your email' });
   } catch (err) {
@@ -213,7 +223,7 @@ router.post('/password/send-code', protect, async (req, res) => {
 router.post('/password/forgot/send-code', async (req, res) => {
   try {
     if (!isEmailReady()) {
-      return res.status(503).json({ success: false, message: 'Email service is not configured. Set Resend credentials first.' });
+      return res.status(503).json({ success: false, message: getEmailStatusMessage() });
     }
     const { email } = req.body;
     const cleanEmail = String(email || '').toLowerCase().trim();
@@ -224,9 +234,9 @@ router.post('/password/forgot/send-code', async (req, res) => {
     const user = await User.findOne({ email: cleanEmail }).select('+resetCodeHash +resetCodeExpiresAt');
     if (user) {
       const code = await setResetCodeForUser(user);
-      const sent = await sendPasswordResetCode(user.email, user.name, code);
-      if (!sent) {
-        return res.status(503).json({ success: false, message: 'Failed to send reset code. Check email configuration.' });
+      const sendResult = await sendPasswordResetCodeDetailed(user.email, user.name, code);
+      if (!sendResult.ok) {
+        return res.status(503).json({ success: false, message: sendResult.error || 'Failed to send reset code. Check email configuration.' });
       }
     }
 
