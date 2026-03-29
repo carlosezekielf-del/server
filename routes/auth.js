@@ -49,7 +49,7 @@ const setResetCodeForUser = async (user) => {
 
 const getEmailStatusMessage = () => {
   const diagnostics = getEmailDiagnostics();
-  return diagnostics?.resend?.setupIssue || 'Email service is not configured. Set Resend credentials first.';
+  return diagnostics?.setupIssue || 'Email service is not configured. Set SMTP or Resend credentials first.';
 };
 
 router.get('/google-client-id', (req, res) => {
