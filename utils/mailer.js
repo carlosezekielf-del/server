@@ -82,6 +82,15 @@ const getSmtpSecure = () => {
   if (SMTP_SECURE_RAW) return SMTP_SECURE_RAW.toLowerCase() === 'true';
   return getSmtpPort() === 465;
 };
+const isGmailSmtp = () => {
+  const host = getSmtpHost().toLowerCase();
+  const user = SMTP_USER.toLowerCase();
+  return host === 'smtp.gmail.com' || user.endsWith('@gmail.com') || user.endsWith('@googlemail.com');
+};
+const getSmtpPassword = () => {
+  if (!isGmailSmtp()) return SMTP_PASS;
+  return SMTP_PASS.replace(/\s+/g, '');
+};
 const buildSmtpFrom = () => {
   const email = SMTP_FROM || SMTP_USER;
   if (!email) return '';
@@ -183,7 +192,7 @@ const getSmtpTransport = () => {
     socketTimeout: MAIL_TIMEOUT_MS,
     auth: {
       user: SMTP_USER,
-      pass: SMTP_PASS
+      pass: getSmtpPassword()
     }
   });
 };
