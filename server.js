@@ -17,6 +17,31 @@ const envOrigins = [
   .map((value) => value.trim())
   .filter(Boolean);
 
+const parseOriginUrl = (value) => {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+};
+
+const allowedVercelPrefixes = envOrigins
+  .map(parseOriginUrl)
+  .filter((value) => value && value.hostname.endsWith('.vercel.app'))
+  .map((value) => value.hostname.replace(/\.vercel\.app$/i, ''));
+
+const isAllowedVercelPreviewOrigin = (origin) => {
+  const parsed = parseOriginUrl(origin);
+  if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.vercel.app')) {
+    return false;
+  }
+
+  return allowedVercelPrefixes.some((prefix) => (
+    parsed.hostname === `${prefix}.vercel.app` ||
+    parsed.hostname.startsWith(`${prefix}-`)
+  ));
+};
+
 const defaultDevOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -30,7 +55,14 @@ const isDev = process.env.NODE_ENV !== 'production';
 app.use(cors({
   origin(origin, cb) {
     const isLocalhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin || '');
-    if (isDev || !origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin) || isLocalhostOrigin) {
+    if (
+      isDev ||
+      !origin ||
+      allowedOrigins.length === 0 ||
+      allowedOrigins.includes(origin) ||
+      isAllowedVercelPreviewOrigin(origin) ||
+      isLocalhostOrigin
+    ) {
       return cb(null, true);
     }
     return cb(new Error('Not allowed by CORS'));
