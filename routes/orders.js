@@ -2,14 +2,54 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
+
+const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
+const normalizeZipCode = (zipCode) => String(zipCode || '').replace(/\D/g, '').slice(0, 4);
+const normalizeShippingAddress = (shippingAddress = {}) => ({
+  street: String(shippingAddress.street || '').trim(),
+  city: String(shippingAddress.city || '').trim(),
+  zipCode: normalizeZipCode(shippingAddress.zipCode),
+  country: String(shippingAddress.country || 'Philippines').trim() || 'Philippines',
+  phone: normalizePhone(shippingAddress.phone)
+});
 
 // CUSTOMER - place order
 router.post('/', protect, async (req, res) => {
   try {
     const { items, shippingAddress, notes } = req.body;
     if (!items || items.length === 0) return res.status(400).json({ success: false, message: 'Order must have items' });
-    if (!shippingAddress?.street || !shippingAddress?.city) return res.status(400).json({ success: false, message: 'Shipping address required' });
+
+    const normalizedAddress = normalizeShippingAddress(shippingAddress);
+    if (!String(req.user?.name || '').trim()) {
+      return res.status(400).json({ success: false, message: 'Complete your profile name before placing an order.' });
+    }
+    if (!normalizedAddress.street || !normalizedAddress.city || !normalizedAddress.country) {
+      return res.status(400).json({ success: false, message: 'Complete your full shipping address before placing an order.' });
+    }
+    if (!/^\d{4}$/.test(normalizedAddress.zipCode)) {
+      return res.status(400).json({ success: false, message: 'Zip code must be exactly 4 digits.' });
+    }
+    if (!/^09\d{9}$/.test(normalizedAddress.phone)) {
+      return res.status(400).json({ success: false, message: 'Phone number is required (11 digits starting with 09).' });
+    }
+
+    const normalizedProfileAddress = [
+      normalizedAddress.street,
+      normalizedAddress.city,
+      normalizedAddress.zipCode,
+      normalizedAddress.country
+    ].join(', ');
+
+    if (req.user.phone !== normalizedAddress.phone || req.user.address !== normalizedProfileAddress) {
+      await User.findByIdAndUpdate(req.user._id, {
+        phone: normalizedAddress.phone,
+        address: normalizedProfileAddress
+      });
+      req.user.phone = normalizedAddress.phone;
+      req.user.address = normalizedProfileAddress;
+    }
 
     let totalAmount = 0;
     const orderItems = [];
@@ -26,7 +66,7 @@ router.post('/', protect, async (req, res) => {
       customer: req.user._id,
       items: orderItems,
       totalAmount,
-      shippingAddress,
+      shippingAddress: normalizedAddress,
       paymentMethod: 'Cash on Delivery',
       notes
     });

@@ -15,10 +15,42 @@ const googleClient = new OAuth2Client();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim());
 const normalizeName = (name) => String(name || '').replace(/\s+/g, ' ').trim();
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
+const normalizeZipCode = (zipCode) => String(zipCode || '').replace(/\D/g, '').slice(0, 4);
 const isValidName = (name) => /^[A-Za-z\s'.-]+$/.test(name);
 const isStrongPassword = (password) => {
   const value = String(password || '');
   return value.length >= 8 && value.length <= 20 && /[A-Za-z]/.test(value) && /\d/.test(value);
+};
+const splitAddress = (address) => {
+  const parts = String(address || '').split(',').map((value) => value.trim()).filter(Boolean);
+  return {
+    street: parts[0] || '',
+    city: parts[1] || '',
+    zipCode: normalizeZipCode(parts[2] || ''),
+    country: parts[3] || 'Philippines'
+  };
+};
+const buildAddress = ({ street = '', city = '', zipCode = '', country = 'Philippines' }) => (
+  [street, city, normalizeZipCode(zipCode), country]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(', ')
+);
+const validateProfileFields = ({ name, phone, address }) => {
+  const cleanName = normalizeName(name);
+  const cleanPhone = normalizePhone(phone);
+  const parsedAddress = splitAddress(address);
+
+  if (!cleanName || cleanName.length < 2) return 'Name must be at least 2 characters';
+  if (/\d/.test(cleanName)) return 'Name cannot contain numbers';
+  if (!isValidName(cleanName)) return 'Name contains invalid characters';
+  if (!/^09\d{9}$/.test(cleanPhone)) return 'Phone must be 11 digits and start with 09';
+  if (!parsedAddress.street) return 'Street is required';
+  if (!parsedAddress.city) return 'Municipality / City is required';
+  if (!/^\d{4}$/.test(parsedAddress.zipCode)) return 'Zip code must be exactly 4 digits';
+  if (!parsedAddress.country) return 'Country is required';
+
+  return '';
 };
 const isRealGoogleClientId = (id) => {
   const v = String(id || '').trim();
@@ -197,7 +229,16 @@ router.get('/me', protect, async (req, res) => {
 router.put('/profile', protect, async (req, res) => {
   try {
     const { name, phone, address, avatar } = req.body;
-    const updates = { name, phone, address };
+    const validationError = validateProfileFields({ name, phone, address });
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
+    }
+
+    const updates = {
+      name: normalizeName(name),
+      phone: normalizePhone(phone),
+      address: buildAddress(splitAddress(address))
+    };
     if (typeof avatar === 'string') updates.avatar = avatar;
     const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true });
     res.json({
