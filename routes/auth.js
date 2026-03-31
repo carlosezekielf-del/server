@@ -13,6 +13,13 @@ const {
 
 const googleClient = new OAuth2Client();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email || '').trim());
+const normalizeName = (name) => String(name || '').replace(/\s+/g, ' ').trim();
+const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
+const isValidName = (name) => /^[A-Za-z\s'.-]+$/.test(name);
+const isStrongPassword = (password) => {
+  const value = String(password || '');
+  return value.length >= 8 && value.length <= 20 && /[A-Za-z]/.test(value) && /\d/.test(value);
+};
 const isRealGoogleClientId = (id) => {
   const v = String(id || '').trim();
   if (!v) return false;
@@ -62,13 +69,22 @@ router.get('/google-client-id', (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, phone, address } = req.body;
+    const cleanName = normalizeName(name);
     const cleanEmail = String(email || '').toLowerCase().trim();
-    if (!name || name.length < 2) return res.status(400).json({ success: false, message: 'Name must be at least 2 characters' });
-    if (!isValidEmail(cleanEmail)) return res.status(400).json({ success: false, message: 'Valid email required' });
-    if (!password || password.length < 8 || password.length > 20) {
-      return res.status(400).json({ success: false, message: 'Password must be 8 to 20 characters' });
+    if (!cleanName || cleanName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Name must be at least 2 characters' });
     }
-    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (/\d/.test(cleanName)) {
+      return res.status(400).json({ success: false, message: 'Name cannot contain numbers' });
+    }
+    if (!isValidName(cleanName)) {
+      return res.status(400).json({ success: false, message: 'Name contains invalid characters' });
+    }
+    if (!isValidEmail(cleanEmail)) return res.status(400).json({ success: false, message: 'Valid email required' });
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ success: false, message: 'Password must be 8 to 20 characters and include letters and numbers' });
+    }
+    const cleanPhone = normalizePhone(phone);
     if (!/^09\d{9}$/.test(cleanPhone)) {
       return res.status(400).json({ success: false, message: 'Phone must be 11 digits and start with 09' });
     }
@@ -76,7 +92,7 @@ router.post('/register', async (req, res) => {
     const exists = await User.findOne({ email: cleanEmail });
     if (exists) return res.status(400).json({ success: false, message: 'Email already registered' });
 
-    const user = await User.create({ name, email: cleanEmail, password, phone: cleanPhone, address, role: 'customer' });
+    const user = await User.create({ name: cleanName, email: cleanEmail, password, phone: cleanPhone, address, role: 'customer' });
     sendWelcomeEmail(user.email, user.name).catch(() => {});
     res.status(201).json({
       success: true,
@@ -250,7 +266,9 @@ router.put('/password/reset', protect, async (req, res) => {
   try {
     const { code, newPassword } = req.body;
     if (!code || !newPassword) return res.status(400).json({ success: false, message: 'Code and new password are required' });
-    if (String(newPassword).length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Password must be 8 to 20 characters and include letters and numbers' });
+    }
 
     const user = await User.findById(req.user._id).select('+password +resetCodeHash +resetCodeExpiresAt');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -282,7 +300,9 @@ router.put('/password/forgot/reset', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Valid email required' });
     }
     if (!code || !newPassword) return res.status(400).json({ success: false, message: 'Code and new password are required' });
-    if (String(newPassword).length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Password must be 8 to 20 characters and include letters and numbers' });
+    }
 
     const user = await User.findOne({ email: cleanEmail }).select('+password +resetCodeHash +resetCodeExpiresAt');
     if (!user) return res.status(400).json({ success: false, message: 'Invalid email or reset code' });
